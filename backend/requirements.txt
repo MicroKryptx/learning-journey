@@ -68,7 +68,6 @@ nvidia-nccl-cu11==2.14.3
 nvidia-nvtx-cu11==11.7.91
 omegaconf==2.3.0
 onnxruntime==1.15.1
-openai==0.27.9
 opencv-python==4.8.0.76
 packaging==23.1
 pandas==2.0.3
@@ -122,3 +121,4 @@ uvloop==0.17.0
 watchfiles==0.20.0
 websockets==11.0.3
 yarl==1.9.2
+google-generativeai==0.5.2

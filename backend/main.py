@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from langchain.document_loaders import S3FileLoader
 from fastapi.middleware.cors import CORSMiddleware
-import uuid
+from uuid import uuid, uuid4
 
 
 def getUUID():
@@ -10,7 +10,7 @@ def getUUID():
 
 
 from datetime import datetime
-import openai
+from google.generative_ai import GeminiAPI
 import re
 import os
 import dotenv
@@ -18,7 +18,7 @@ import json
 import boto3
 
 dotenv.load_dotenv()
-openai.api_key = os.getenv("OPENAI_API_KEY")
+geminiAPI = GeminiAPI(os.getenv("API_KEY"))
 os.environ["AWS_ACCESS_KEY_ID"] = os.getenv("NEXT_PUBLIC_S3_ACCESS_KEY_ID")
 os.environ["AWS_SECRET_ACCESS_KEY"] = os.getenv("NEXT_PUBLIC_S3_SECRET_ACCESS_KEY")
 s3 = boto3.client(
@@ -59,41 +59,47 @@ async def get_s3_content(body: GetS3ContentRequestBody):
 async def get_summarised_s3_content(body: GetS3ContentRequestBody):
     loader = S3FileLoader(os.getenv("NEXT_PUBLIC_S3_BUCKET_NAME"), body.s3_file_key)
     content = json.loads(loader.load()[0].json())["page_content"]
-    response = openai.ChatCompletion.create(
-        temperature=0.4,
-        model="gpt-3.5-turbo",
-        messages=[
+
+    model = geminiAPI.getGenerativeModel(model="gemini-pro")
+
+    prompt = {
+        "messages": [
             {
                 "role": "system",
-                "content": "You are an AI capable of generating text summaries",
+                "content": "You are an AI capable of generating text summaries"
             },
             {
                 "role": "user",
                 "content": f"""
 please summarise the following text: \n\n{content}\n\nsummary:
-""",
-            },
-        ],
-    )
+"""
+            }
+        ]
+    }
 
-    res = response["choices"][0]["message"]["content"]
+    result = await model.generateContent(prompt)
+
+    response = await result.response
+    data = await response.json()
+
+    res = data["choices"][0]["message"]["content"]
     return res
 
 
 class GenerateRequestBody(BaseModel):
     content: str
 
-
 @app.post("/api/generate")
 async def generate(body: GenerateRequestBody):
     print("generating for content" + body.content[:10])
-    response = await openai.ChatCompletion.acreate(
-        temperature=0.4,
-        model="gpt-3.5-turbo",
-        messages=[
+
+    model = geminiAPI.getGenerativeModel(model="gemini-pro")
+
+    prompt = {
+        "messages": [
             {
                 "role": "system",
-                "content": "You are an AI capable of generating mermaid MD diagrams.",
+                "content": "You are an AI capable of generating mermaid MD diagrams."
             },
             {
                 "role": "user",
@@ -117,27 +123,32 @@ mindmap
     Tools
       Pen and paper
       Mermaid
-""",
+"""
             },
             {
                 "role": "user",
-                "content": f"""Generate a mindmap mermaid diagram based on the following text: \n\n{body.content}\n\nmermaid diagram:""",
-            },
-        ],
-    )
+                "content": f"""Generate a mindmap mermaid diagram based on the following text: \n\n{body.content}\n\nmermaid diagram:"""
+            }
+        ]
+    }
 
-    res = response["choices"][0]["message"]["content"]
+    result = await model.generateContent(prompt)
+
+    response = await result.response
+    data = await response.json()
+
+    res = data["choices"][0]["message"]["content"]
     # extract out the content from between the ```mermaid and ``` tags
     res = re.search(r"```mermaid(.*)```", res, re.DOTALL).group(1)
     res = res.replace("```", "")
 
-    random_input_file = f"input-{getUUID()}.mmd"
-    random_output_file = f"output-{getUUID()}.png"
+    random_input_file = f"input-{uuid4()}.mmd"
+    random_output_file = f"output-{uuid4()}.png"
 
     # output the res into a input.mmd file
     with open(random_input_file, "w") as f:
         f.write(res)
-    # mmdc -i input.mmd -o output.png -t dark -b transparent
+    
     try:
         os.system(
             f"mmdc -i {random_input_file} -o {random_output_file} -t dark -b transparent -p puppeteer-config.json"
@@ -151,7 +162,6 @@ mindmap
         os.remove(random_input_file)
         os.remove(random_output_file)
         # return the s3 url
-        # https://whatthehack2023.s3.ap-southeast-1.amazonaws.com/mermaid/output.png
         res = (
             "https://"
             + os.getenv("NEXT_PUBLIC_S3_BUCKET_NAME")

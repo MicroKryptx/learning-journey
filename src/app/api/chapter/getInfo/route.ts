@@ -1,4 +1,5 @@
-import { openai } from "@/lib/gpt";
+import { geminiAPI } from "@/lib/gemini"; // Assuming you've already configured and exported geminiAPI
+
 import {
   palmGetQuestionFromTranscript,
 } from "@/lib/palm";
@@ -29,11 +30,7 @@ export async function POST(req: Request, res: Response) {
       );
     }
     const videoId = await searchYouTube(chapter.name);
-    const response = await openai.createChatCompletion({
-      temperature: 0.5,
-      model: 'gpt-4-turbo',
-      // @ts-ignore
-      response_format: { type: "json_object" },
+    const response = await geminiAPI.getGenerativeModel({ model: "gemini-pro" }).generateContent({
       messages: [
         {
           role: "system",
@@ -46,7 +43,7 @@ export async function POST(req: Request, res: Response) {
         `}
       ],
     });
-    const data = await response.json()
+    const data = await response.response.json();
     let res = JSON.parse(data.choices[0].message?.content)
     const summary = res.summary
 
